@@ -23,35 +23,81 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/gpio.h>
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Rodrigo Lemos");
-MODULE_DESCRIPTION("I-Trigue 3300 Controller");
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 #define GPIO_ONOFF 139
 #define HIGH 1
 #define LOW 0
 
+static ssize_t onoff_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+	int onoff = gpio_get_value( GPIO_ONOFF );
+
+	return sprintf( buf, "%d\n", onoff );
+}
+
+static ssize_t onoff_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+	int onoff;
+
+	sscanf( buf, "%d", &onoff );
+
+	gpio_set_value( GPIO_ONOFF, onoff != 0 );
+
+	return count;
+}
+
+static struct kobj_attribute onoff_attribute = __ATTR( onoff, 0666, onoff_show, onoff_store);
+
+static struct attribute *attrs[] = {
+	&onoff_attribute.attr,
+	NULL,
+};
+
+static struct attribute_group attr_group = {
+	.attrs = attrs,
+};
+
+static struct kobject *itrigue_kobj;
+
 static int __init itrigue_init(void) {
 	int ret;
 
-	ret = gpio_request( GPIO_ONOFF, "itrigue" );
+	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
 	if( ret ) {
-		return ret;
+		goto fail_gpio_onoff_request;
 	}
 
-	ret = gpio_direction_output( GPIO_ONOFF, HIGH );
+	ret = gpio_direction_output( GPIO_ONOFF, LOW );
 	if( ret ) {
-		gpio_free( GPIO_ONOFF );
-		return ret;
+		goto fail_gpio_onoff_direction_output;
 	}
 
-	printk(KERN_INFO "I-Trigue 3300 on\n");
+	itrigue_kobj = kobject_create_and_add( "itrigue", kernel_kobj );
+	if( !itrigue_kobj ) {
+		ret = -ENOMEM;
+		goto fail_kobject_create_and_add;
+	}
+
+	ret = sysfs_create_group( itrigue_kobj, &attr_group );
+	if( ret ) {
+		kobject_put( itrigue_kobj );
+	}
+		
 
 	return 0;
+
+
+fail_kobject_create_and_add:
+fail_gpio_onoff_direction_output:
+	gpio_free( GPIO_ONOFF );
+
+fail_gpio_onoff_request:
+	return ret;
 }
 
 static void __exit itrigue_exit(void) {
+	kobject_put( itrigue_kobj );
+
 	gpio_set_value( GPIO_ONOFF, LOW );
 
 	printk(KERN_INFO "I-Trigue 3300 off.\n");
@@ -61,3 +107,8 @@ static void __exit itrigue_exit(void) {
 
 module_init(itrigue_init);
 module_exit(itrigue_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Rodrigo Lemos");
+MODULE_DESCRIPTION("I-Trigue 3300 Controller");
+
