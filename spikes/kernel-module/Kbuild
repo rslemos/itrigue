@@ -17,4 +17,4 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
 # END COPYRIGHT NOTICE
-obj-m := itrigue-on.o
+obj-m := itrigue.o

@@ -26,16 +26,16 @@
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Rodrigo Lemos");
-MODULE_DESCRIPTION("Turn I-Trigue 3300 on");
+MODULE_DESCRIPTION("I-Trigue 3300 Controller");
 
 #define GPIO_ONOFF 139
 #define HIGH 1
 #define LOW 0
 
-static int __init itrigue_on(void) {
+static int __init itrigue_init(void) {
 	int ret;
 
-	ret = gpio_request( GPIO_ONOFF, "itrigue-on" );
+	ret = gpio_request( GPIO_ONOFF, "itrigue" );
 	if( ret ) {
 		return ret;
 	}
@@ -51,7 +51,7 @@ static int __init itrigue_on(void) {
 	return 0;
 }
 
-static void __exit itrigue_off(void) {
+static void __exit itrigue_exit(void) {
 	gpio_set_value( GPIO_ONOFF, LOW );
 
 	printk(KERN_INFO "I-Trigue 3300 off.\n");
@@ -59,5 +59,5 @@ static void __exit itrigue_off(void) {
 	gpio_free( GPIO_ONOFF );
 }
 
-module_init(itrigue_on);
-module_exit(itrigue_off);
+module_init(itrigue_init);
+module_exit(itrigue_exit);
