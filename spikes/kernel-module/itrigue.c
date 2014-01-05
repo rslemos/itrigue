@@ -25,38 +25,19 @@
 #include <linux/gpio.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
-#include <linux/platform_device.h>
-#include <linux/spi/spi_gpio.h>
 #include <linux/spi/spi.h>
 
 #define GPIO_ONOFF 139
-#define GPIO_POT_CS 138
-#define GPIO_POT_SCK 137
-#define GPIO_POT_SIMO 136
 
 #define HIGH 1
 #define LOW 0
 
-static struct spi_gpio_platform_data spi_gpio_pot_platform_data = {
-	.sck = GPIO_POT_SCK,
-	.miso = SPI_GPIO_NO_MISO,
-	.mosi = GPIO_POT_SIMO,
-	.num_chipselect = 1,
-};
-
-static struct platform_device spi_gpio_pot_device = {
-	.name = "spi_gpio",
-	.id = 5,
-	.dev.platform_data  = &spi_gpio_pot_platform_data,
-};
-
 static struct spi_board_info spi_pot_device_info = {
 	.modalias = "itrigue",
-	.max_speed_hz = 250, /* cannot be lower than this because of drivers/spi/spi-bitbang.c:174 */
-	.bus_num = 5,
+	.max_speed_hz = 1500000, /* found experimentally */
+	.bus_num = 4,
 	.chip_select = 0,
 	.mode = 0,
-	.controller_data = (void*)GPIO_POT_CS,
 };
 
 static struct spi_device *spi_pot_device;
@@ -163,10 +144,7 @@ static int __init itrigue_init(void) {
 	ret = gpio_direction_output( GPIO_ONOFF, LOW );
 	cleanup_if_nonzero( ret, gpio_onoff_direction_output );
 
-	ret = platform_device_register( &spi_gpio_pot_device );
-	cleanup_if_nonzero( ret, platform_device_register );
-
-	master = spi_busnum_to_master( 5 );
+	master = spi_busnum_to_master( 4 );
 	cleanup_if_nonzero_with_ret( !master, spi_busnum_to_master, -ENODEV );
 
 	spi_pot_device = spi_new_device( master, &spi_pot_device_info );
@@ -194,9 +172,7 @@ fail_spi_setup:
 
 fail_spi_new_device:
 fail_spi_busnum_to_master:
-	platform_device_unregister( &spi_gpio_pot_device );
 
-fail_platform_device_register:
 fail_gpio_onoff_direction_output:
 
 	gpio_free( GPIO_ONOFF );
@@ -212,8 +188,6 @@ static void __exit itrigue_exit(void) {
 	kobject_put( itrigue_kobj );
 
 	spi_unregister_device( spi_pot_device );
-
-	platform_device_unregister( &spi_gpio_pot_device );
 
 	gpio_set_value( GPIO_ONOFF, LOW );
 
