@@ -42,8 +42,10 @@ static struct spi_board_info spi_pot_device_info = {
 
 static struct spi_device *spi_pot_device;
 
-static int volume;
-static int pitch;
+#define UNKNOWN -1
+
+static int volume = UNKNOWN;
+static int pitch = UNKNOWN;
 	
 static uint16_t write_data;
 
@@ -65,7 +67,10 @@ static ssize_t onoff_store(struct kobject *kobj, struct kobj_attribute *attr, co
 }
 
 static inline ssize_t pot_show(char *buf, int *pot) {
-	return sprintf( buf, "%d\n", *pot );
+	if( *pot == UNKNOWN )
+		return sprintf( buf, "unknown\n" );
+	else
+		return sprintf( buf, "%d\n", *pot );
 }
 
 static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd) {
@@ -161,9 +166,6 @@ static int __init itrigue_init(void) {
 	if( ret )	
 		kobject_put( itrigue_kobj );
 
-	volume_store( NULL, NULL, "0", 1 );
-	pitch_store( NULL, NULL, "128", 3 );
-
 	return 0;
 
 fail_kobject_create_and_add:
@@ -182,9 +184,6 @@ fail_gpio_onoff_request:
 }
 
 static void __exit itrigue_exit(void) {
-	volume_store( NULL, NULL, "0", 1 );
-	pitch_store( NULL, NULL, "128", 3 );
-
 	kobject_put( itrigue_kobj );
 
 	spi_unregister_device( spi_pot_device );
