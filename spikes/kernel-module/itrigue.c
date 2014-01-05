@@ -64,42 +64,42 @@ static ssize_t onoff_store(struct kobject *kobj, struct kobj_attribute *attr, co
 	return count;
 }
 
-static ssize_t volume_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	return sprintf( buf, "%d\n", volume );
+static inline ssize_t pot_show(char *buf, int *pot) {
+	return sprintf( buf, "%d\n", *pot );
 }
 
-static ssize_t volume_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	sscanf( buf, "%d", &volume );
+static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd) {
+	sscanf( buf, "%d", pot );
 
-	if( volume < 0 )
-		volume = 0;
-	if( volume > 255 )
-		volume = 255;
+	if( *pot < 0 )
+		*pot = 0;
+	if( *pot > 255 )
+		*pot = 255;
 
-	write_data = 0x12 << 8 | volume;
+	write_data = cmd | *pot;
 	printk( KERN_INFO "spi_write( ..., 0x%x, %d )\n", write_data, sizeof write_data );
 	spi_write( spi_pot_device, &write_data, sizeof write_data );
 
 	return count;
+}
+
+static ssize_t volume_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+	return pot_show( buf, &volume );
 }
 
 static ssize_t pitch_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	return sprintf( buf, "%d\n", pitch );
+	return pot_show( buf, &pitch );
+}
+
+#define SET_POT_0 0x11 << 8
+#define SET_POT_1 0x12 << 8
+
+static ssize_t volume_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+	return pot_store( buf, count, &volume, SET_POT_1 );
 }
 
 static ssize_t pitch_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	sscanf( buf, "%d", &pitch );
-
-	if( pitch < 0 )
-		pitch = 0;
-	if( pitch > 255 )
-		pitch = 255;
-
-	write_data = 0x11 << 8 | pitch;
-	printk( KERN_INFO "spi_write( ..., 0x%x, %d )\n", write_data, sizeof write_data );
-	spi_write( spi_pot_device, &write_data, sizeof write_data );
-
-	return count;
+	return pot_store( buf, count, &pitch, SET_POT_0 );
 }
 
 static struct kobj_attribute onoff_attribute = __ATTR( onoff, 0666, onoff_show, onoff_store);
