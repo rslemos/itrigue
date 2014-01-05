@@ -25,6 +25,9 @@
 #include <linux/gpio.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
+#include <linux/platform_device.h>
+#include <linux/spi/spi_gpio.h>
+#include <linux/spi/spi.h>
 
 #define GPIO_ONOFF 139
 #define GPIO_POT_CS 138
@@ -34,8 +37,35 @@
 #define HIGH 1
 #define LOW 0
 
+static struct spi_gpio_platform_data spi_gpio_pot_platform_data = {
+	.sck = GPIO_POT_SCK,
+	.miso = SPI_GPIO_NO_MISO,
+	.mosi = GPIO_POT_SIMO,
+	.num_chipselect = 1,
+};
+
+static struct platform_device spi_gpio_pot_device = {
+	.name = "spi_gpio",
+	.id = 5,
+	.dev.platform_data  = &spi_gpio_pot_platform_data,
+};
+
+static struct spi_board_info spi_pot_device_info = {
+	.modalias = "itrigue",
+	.max_speed_hz = 250, /* cannot be lower than this because of drivers/spi/spi-bitbang.c:174 */
+	.bus_num = 5,
+	.chip_select = 0,
+	.mode = 0,
+	.controller_data = (void*)GPIO_POT_CS,
+};
+
+static struct spi_device *spi_pot_device;
+
 static int volume;
 static int pitch;
+	
+static uint16_t write_data;
+
 
 static ssize_t onoff_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
 	int onoff = gpio_get_value( GPIO_ONOFF );
@@ -58,16 +88,16 @@ static ssize_t volume_show(struct kobject *kobj, struct kobj_attribute *attr, ch
 }
 
 static ssize_t volume_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	int _volume;
+	sscanf( buf, "%d", &volume );
 
-	sscanf( buf, "%d", &_volume );
+	if( volume < 0 )
+		volume = 0;
+	if( volume > 255 )
+		volume = 255;
 
-	if( _volume < 0 )
-		_volume = 0;
-	if( _volume >  255 )
-		_volume = 255;
-
-	volume = _volume;
+	write_data = 0x12 << 8 | volume;
+	printk( KERN_INFO "spi_write( ..., 0x%x, %d )\n", write_data, sizeof write_data );
+	spi_write( spi_pot_device, &write_data, sizeof write_data );
 
 	return count;
 }
@@ -77,16 +107,16 @@ static ssize_t pitch_show(struct kobject *kobj, struct kobj_attribute *attr, cha
 }
 
 static ssize_t pitch_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	int _pitch;
+	sscanf( buf, "%d", &pitch );
 
-	sscanf( buf, "%d", &_pitch );
+	if( pitch < 0 )
+		pitch = 0;
+	if( pitch > 255 )
+		pitch = 255;
 
-	if( _pitch < 0 )
-		_pitch = 0;
-	if( _pitch >  255 )
-		_pitch = 255;
-
-	pitch = _pitch;
+	write_data = 0x11 << 8 | pitch;
+	printk( KERN_INFO "spi_write( ..., 0x%x, %d )\n", write_data, sizeof write_data );
+	spi_write( spi_pot_device, &write_data, sizeof write_data );
 
 	return count;
 }
@@ -125,30 +155,26 @@ static struct kobject *itrigue_kobj;
 
 static int __init itrigue_init(void) {
 	int ret;
+	struct spi_master *master;
 
 	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
 	cleanup_if_nonzero( ret, gpio_onoff_request );
 
-	ret = gpio_request( GPIO_POT_CS, "itrigue::pot_cs" );
-	cleanup_if_nonzero( ret, gpio_pot_cs_request );
-
-	ret = gpio_request( GPIO_POT_SCK, "itrigue::pot_sck" );
-	cleanup_if_nonzero( ret, gpio_pot_sck_request );
-
-	ret = gpio_request( GPIO_POT_SIMO, "itrigue::pot_simo" );
-	cleanup_if_nonzero( ret, gpio_pot_simo_request );
-
 	ret = gpio_direction_output( GPIO_ONOFF, LOW );
 	cleanup_if_nonzero( ret, gpio_onoff_direction_output );
 
-	ret = gpio_direction_output( GPIO_POT_CS, HIGH );
-	cleanup_if_nonzero( ret, gpio_pot_cs_direction_output );
+	ret = platform_device_register( &spi_gpio_pot_device );
+	cleanup_if_nonzero( ret, platform_device_register );
 
-	ret = gpio_direction_output( GPIO_POT_SCK, LOW );
-	cleanup_if_nonzero( ret, gpio_pot_sck_direction_output );
+	master = spi_busnum_to_master( 5 );
+	cleanup_if_nonzero_with_ret( !master, spi_busnum_to_master, -ENODEV );
 
-	ret = gpio_direction_output( GPIO_POT_SIMO, LOW );
-	cleanup_if_nonzero( ret, gpio_pot_simo_direction_output );
+	spi_pot_device = spi_new_device( master, &spi_pot_device_info );
+	cleanup_if_nonzero_with_ret( !spi_pot_device, spi_new_device, -ENODEV );
+
+	spi_pot_device->bits_per_word = 16;
+	ret = spi_setup( spi_pot_device );
+	cleanup_if_nonzero( ret, spi_setup );
 
 	itrigue_kobj = kobject_create_and_add( "itrigue", kernel_kobj );
 	cleanup_if_nonzero_with_ret( !itrigue_kobj, kobject_create_and_add, -ENOMEM );
@@ -157,22 +183,22 @@ static int __init itrigue_init(void) {
 	if( ret )	
 		kobject_put( itrigue_kobj );
 
+	volume_store( NULL, NULL, "0", 1 );
+	pitch_store( NULL, NULL, "128", 3 );
+
 	return 0;
 
 fail_kobject_create_and_add:
-fail_gpio_pot_simo_direction_output:
-fail_gpio_pot_sck_direction_output:
-fail_gpio_pot_cs_direction_output:
+fail_spi_setup:
+	spi_unregister_device( spi_pot_device );
+
+fail_spi_new_device:
+fail_spi_busnum_to_master:
+	platform_device_unregister( &spi_gpio_pot_device );
+
+fail_platform_device_register:
 fail_gpio_onoff_direction_output:
-	gpio_free( GPIO_POT_SIMO );
 
-fail_gpio_pot_simo_request:
-	gpio_free( GPIO_POT_SCK );
-
-fail_gpio_pot_sck_request:
-	gpio_free( GPIO_POT_CS );
-
-fail_gpio_pot_cs_request:
 	gpio_free( GPIO_ONOFF );
 
 fail_gpio_onoff_request:
@@ -180,15 +206,19 @@ fail_gpio_onoff_request:
 }
 
 static void __exit itrigue_exit(void) {
+	volume_store( NULL, NULL, "0", 1 );
+	pitch_store( NULL, NULL, "128", 3 );
+
 	kobject_put( itrigue_kobj );
+
+	spi_unregister_device( spi_pot_device );
+
+	platform_device_unregister( &spi_gpio_pot_device );
 
 	gpio_set_value( GPIO_ONOFF, LOW );
 
 	printk(KERN_INFO "I-Trigue 3300 off.\n");
 
-	gpio_free( GPIO_POT_SIMO );
-	gpio_free( GPIO_POT_SCK );
-	gpio_free( GPIO_POT_CS );
 	gpio_free( GPIO_ONOFF );
 }
 
