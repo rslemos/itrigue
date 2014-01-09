@@ -27,56 +27,6 @@
 #include <sound/core.h>
 #include <sound/control.h>
 
-#define GPIO_ONOFF 139
-
-#define HIGH 1
-#define LOW 0
-
-static struct spi_board_info spi_pot_device_info = {
-	.modalias = "itrigue",
-	.max_speed_hz = 1500000, /* found experimentally */
-	.bus_num = 4,
-	.chip_select = 0,
-	.mode = 0,
-};
-
-static struct spi_device *spi_pot_device;
-
-#define UNKNOWN -1
-
-static int volume = UNKNOWN;
-static int pitch = UNKNOWN;
-	
-static uint16_t write_data;
-
-static inline int get_onoff(void) {
-	return gpio_get_value( GPIO_ONOFF );
-}
-
-static inline void set_onoff(int onoff) {
-	gpio_set_value( GPIO_ONOFF, onoff );
-}
-
-static inline int get_pot(int *pot) {
-	return *pot;
-}
-
-static inline void set_pot(int *pot, int value, int cmd) {
-	*pot = value;
-
-	if( *pot < 0 )
-		*pot = 0;
-	if( *pot > 255 )
-		*pot = 255;
-
-	write_data = cmd | *pot;
-	printk( KERN_INFO "spi_write( ..., 0x%x, %zu )\n", write_data, sizeof write_data );
-	spi_write( spi_pot_device, &write_data, sizeof write_data );
-}
-
-#define SET_POT_0 0x11 << 8
-#define SET_POT_1 0x12 << 8
-
 #define cleanup_if_nonzero(value, cleanup_label)					\
 	do {															\
 		if( (value) )												\
@@ -92,7 +42,43 @@ static inline void set_pot(int *pot, int value, int cmd) {
 		}															\
 	} while(0)
 
-static struct snd_card *card;
+
+/* CORE FUNCTIONS */
+#define UNKNOWN -1
+
+#define SET_POT_X(x) ((0x10 | (0x1 << x)) << 8)
+#define SET_POT_0 SET_POT_X(0)
+#define SET_POT_1 SET_POT_X(1)
+
+#define GPIO_ONOFF 139
+static struct spi_device *spi_pot_device;
+
+static int volume = UNKNOWN;
+static int pitch = UNKNOWN;
+	
+static inline int get_onoff(void) {
+	return gpio_get_value( GPIO_ONOFF );
+}
+
+static inline void set_onoff(int onoff) {
+	gpio_set_value( GPIO_ONOFF, onoff );
+}
+
+static inline int get_pot(int *pot) {
+	return *pot;
+}
+
+static inline void set_pot(int *pot, int value, int cmd) {
+	static uint16_t write_data;
+
+	*pot = value;
+
+	write_data = cmd | *pot;
+	printk( KERN_INFO "spi_write( ..., 0x%x, %zu )\n", write_data, sizeof write_data );
+	spi_write( spi_pot_device, &write_data, sizeof write_data );
+}
+
+/* ALSA FUNCTIONS */
 
 static int playback_switch_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo) {
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
@@ -163,24 +149,37 @@ static int playback_pitch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem
 	return changed;
 }
 
-static struct snd_kcontrol_new controls[] = {
-	{
+
+static struct snd_card *card;
+
+static int __init itrigue_init(void) {
+	static struct spi_board_info spi_pot_device_info = {
+		.modalias = "itrigue",
+		.max_speed_hz = 1500000, /* found experimentally */
+		.bus_num = 4,
+		.chip_select = 0,
+		.mode = 0,
+	};
+
+	static struct snd_kcontrol_new ctl_onoff = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Switch",
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 		.info = playback_switch_info,
 		.get = playback_switch_get,
 		.put = playback_switch_put
-	},
-	{
+	};
+
+	static struct snd_kcontrol_new ctl_volume = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Volume",
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 		.info = playback_volume_info,
 		.get = playback_volume_get,
 		.put = playback_volume_put
-	},
-	{
+	};
+
+	static struct snd_kcontrol_new ctl_pitch = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Tone Control - Bass",
 		.device = 0, .subdevice = 1,
@@ -188,20 +187,21 @@ static struct snd_kcontrol_new controls[] = {
 		.info = playback_pitch_info,
 		.get = playback_pitch_get,
 		.put = playback_pitch_put
-	},
-};
+	};
 
-static int __init itrigue_init(void) {
 	int ret;
-	int i;
 
 	struct spi_master *master;
+
+	/* setup GPIO */
 
 	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
 	cleanup_if_nonzero( ret, gpio_onoff_request );
 
-	ret = gpio_direction_output( GPIO_ONOFF, LOW );
+	ret = gpio_direction_output( GPIO_ONOFF, 0 );
 	cleanup_if_nonzero( ret, gpio_onoff_direction_output );
+	
+	/* setup SPI */
 
 	master = spi_busnum_to_master( 4 );
 	cleanup_if_nonzero_with_ret( !master, spi_busnum_to_master, -ENODEV );
@@ -213,6 +213,8 @@ static int __init itrigue_init(void) {
 	ret = spi_setup( spi_pot_device );
 	cleanup_if_nonzero( ret, spi_setup );
 
+	/* setup ALSA */
+
 	ret = snd_card_create(-1, "Itrigue", THIS_MODULE, 0, &card);
 	cleanup_if_nonzero( ret, snd_card_create );
 
@@ -222,10 +224,16 @@ static int __init itrigue_init(void) {
 		card->shortname, spi_pot_device_info.bus_num,
 		spi_pot_device_info.chip_select, GPIO_ONOFF );
 
-	for( i = 0; i < ARRAY_SIZE( controls ); i++ ) {
-		ret = snd_ctl_add( card, snd_ctl_new1( &controls[i], NULL ) );
-		cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
-	}
+	/* ALSA controls */
+	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_onoff, NULL ) );
+	cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
+
+	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_volume, NULL ) );
+	cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
+
+	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_pitch, NULL ) );
+	cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
+
 
 	ret = snd_card_register( card );
 	cleanup_if_nonzero( ret, snd_card_register );
@@ -256,7 +264,7 @@ static void __exit itrigue_exit(void) {
 
 	spi_unregister_device( spi_pot_device );
 
-	gpio_set_value( GPIO_ONOFF, LOW );
+	gpio_set_value( GPIO_ONOFF, 0 );
 
 	printk(KERN_INFO "I-Trigue 3300 off.\n");
 
