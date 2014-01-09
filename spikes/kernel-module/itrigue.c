@@ -82,7 +82,7 @@ static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd
 		*pot = 255;
 
 	write_data = cmd | *pot;
-	printk( KERN_INFO "spi_write( ..., 0x%x, %d )\n", write_data, sizeof write_data );
+	printk( KERN_INFO "spi_write( ..., 0x%x, %zu )\n", write_data, sizeof write_data );
 	spi_write( spi_pot_device, &write_data, sizeof write_data );
 
 	return count;

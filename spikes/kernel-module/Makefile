@@ -18,12 +18,15 @@
 # 
 # END COPYRIGHT NOTICE
 KDIR ?= /home/rslemos/beagleboard/stable-kernel/KERNEL
+ARCH ?= arm
+CROSS_COMPILE ?= arm-linux-gnueabihf-
+
 
 default:
-	$(MAKE) -C $(KDIR) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- M=$$PWD prepare modules
+	$(MAKE) -C $(KDIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$$PWD prepare modules
 
 clean:
-	$(MAKE) -C $(KDIR) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- M=$$PWD clean
+	$(MAKE) -C $(KDIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$$PWD clean
 
 
 
