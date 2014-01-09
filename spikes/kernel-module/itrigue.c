@@ -23,8 +23,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/gpio.h>
-#include <linux/kobject.h>
-#include <linux/sysfs.h>
 #include <linux/spi/spi.h>
 #include <sound/core.h>
 #include <sound/control.h>
@@ -76,74 +74,8 @@ static inline void set_pot(int *pot, int value, int cmd) {
 	spi_write( spi_pot_device, &write_data, sizeof write_data );
 }
 
-static ssize_t onoff_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	int onoff = get_onoff();
-
-	return sprintf( buf, "%d\n", onoff );
-}
-
-static ssize_t onoff_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	int onoff;
-
-	sscanf( buf, "%d", &onoff );
-
-	set_onoff( onoff != 0 );
-
-	return count;
-}
-
-static inline ssize_t pot_show(char *buf, int *pot) {
-	int value = get_pot( pot );
-	if( value == UNKNOWN )
-		return sprintf( buf, "unknown\n" );
-	else
-		return sprintf( buf, "%d\n", value );
-}
-
-static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd) {
-	int value;
-	sscanf( buf, "%d", &value );
-
-	set_pot( pot, value, cmd );
-
-	return count;
-}
-
-static ssize_t volume_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	return pot_show( buf, &volume );
-}
-
-static ssize_t pitch_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	return pot_show( buf, &pitch );
-}
-
 #define SET_POT_0 0x11 << 8
 #define SET_POT_1 0x12 << 8
-
-static ssize_t volume_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	return pot_store( buf, count, &volume, SET_POT_1 );
-}
-
-static ssize_t pitch_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	return pot_store( buf, count, &pitch, SET_POT_0 );
-}
-
-static struct kobj_attribute onoff_attribute = __ATTR( onoff, 0666, onoff_show, onoff_store);
-static struct kobj_attribute volume_attribute = __ATTR( volume, 0666, volume_show, volume_store);
-static struct kobj_attribute pitch_attribute = __ATTR( pitch, 0666, pitch_show, pitch_store);
-
-static struct attribute *attrs[] = {
-	&onoff_attribute.attr,
-	&volume_attribute.attr,
-	&pitch_attribute.attr,
-	NULL,
-};
-
-static struct attribute_group attr_group = {
-	.attrs = attrs,
-};
-
-static struct kobject *itrigue_kobj;
 
 #define cleanup_if_nonzero(value, cleanup_label)					\
 	do {															\
@@ -281,13 +213,6 @@ static int __init itrigue_init(void) {
 	ret = spi_setup( spi_pot_device );
 	cleanup_if_nonzero( ret, spi_setup );
 
-	itrigue_kobj = kobject_create_and_add( "itrigue", kernel_kobj );
-	cleanup_if_nonzero_with_ret( !itrigue_kobj, kobject_create_and_add, -ENOMEM );
-
-	ret = sysfs_create_group( itrigue_kobj, &attr_group );
-	if( ret )	
-		kobject_put( itrigue_kobj );
-
 	ret = snd_card_create(-1, "Itrigue", THIS_MODULE, 0, &card);
 	cleanup_if_nonzero( ret, snd_card_create );
 
@@ -312,7 +237,6 @@ fail_snd_card_register:
 	snd_card_free( card );
 
 fail_snd_card_create:
-fail_kobject_create_and_add:
 fail_spi_setup:
 	spi_unregister_device( spi_pot_device );
 
@@ -329,8 +253,6 @@ fail_gpio_onoff_request:
 
 static void __exit itrigue_exit(void) {
 	snd_card_free( card );
-
-	kobject_put( itrigue_kobj );
 
 	spi_unregister_device( spi_pot_device );
 
