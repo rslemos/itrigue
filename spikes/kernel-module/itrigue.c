@@ -26,6 +26,7 @@
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
 #include <linux/spi/spi.h>
+#include <sound/core.h>
 
 #define GPIO_ONOFF 139
 
@@ -139,6 +140,8 @@ static struct kobject *itrigue_kobj;
 		}															\
 	} while(0)
 
+static struct snd_card *card;
+
 static int __init itrigue_init(void) {
 	int ret;
 	struct spi_master *master;
@@ -166,8 +169,24 @@ static int __init itrigue_init(void) {
 	if( ret )	
 		kobject_put( itrigue_kobj );
 
+	ret = snd_card_create(-1, "Itrigue", THIS_MODULE, 0, &card);
+	cleanup_if_nonzero( ret, snd_card_create );
+
+	strcpy( card->driver, "I-Trigue" );
+	strcpy( card->shortname, "I-Trigue 3300" );
+	sprintf( card->longname, "%s at spi %d.%d, gpio %d", 
+		card->shortname, spi_pot_device_info.bus_num,
+		spi_pot_device_info.chip_select, GPIO_ONOFF );
+
+	ret = snd_card_register( card );
+	cleanup_if_nonzero( ret, snd_card_register );
+
 	return 0;
 
+fail_snd_card_register:
+	snd_card_free( card );
+
+fail_snd_card_create:
 fail_kobject_create_and_add:
 fail_spi_setup:
 	spi_unregister_device( spi_pot_device );
@@ -184,6 +203,8 @@ fail_gpio_onoff_request:
 }
 
 static void __exit itrigue_exit(void) {
+	snd_card_free( card );
+
 	kobject_put( itrigue_kobj );
 
 	spi_unregister_device( spi_pot_device );
