@@ -27,6 +27,7 @@
 #include <linux/sysfs.h>
 #include <linux/spi/spi.h>
 #include <sound/core.h>
+#include <sound/control.h>
 
 #define GPIO_ONOFF 139
 
@@ -50,32 +51,20 @@ static int pitch = UNKNOWN;
 	
 static uint16_t write_data;
 
-
-static ssize_t onoff_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	int onoff = gpio_get_value( GPIO_ONOFF );
-
-	return sprintf( buf, "%d\n", onoff );
+static inline int get_onoff(void) {
+	return gpio_get_value( GPIO_ONOFF );
 }
 
-static ssize_t onoff_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	int onoff;
-
-	sscanf( buf, "%d", &onoff );
-
-	gpio_set_value( GPIO_ONOFF, onoff != 0 );
-
-	return count;
+static inline void set_onoff(int onoff) {
+	gpio_set_value( GPIO_ONOFF, onoff );
 }
 
-static inline ssize_t pot_show(char *buf, int *pot) {
-	if( *pot == UNKNOWN )
-		return sprintf( buf, "unknown\n" );
-	else
-		return sprintf( buf, "%d\n", *pot );
+static inline int get_pot(int *pot) {
+	return *pot;
 }
 
-static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd) {
-	sscanf( buf, "%d", pot );
+static inline void set_pot(int *pot, int value, int cmd) {
+	*pot = value;
 
 	if( *pot < 0 )
 		*pot = 0;
@@ -85,6 +74,37 @@ static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd
 	write_data = cmd | *pot;
 	printk( KERN_INFO "spi_write( ..., 0x%x, %zu )\n", write_data, sizeof write_data );
 	spi_write( spi_pot_device, &write_data, sizeof write_data );
+}
+
+static ssize_t onoff_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+	int onoff = get_onoff();
+
+	return sprintf( buf, "%d\n", onoff );
+}
+
+static ssize_t onoff_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+	int onoff;
+
+	sscanf( buf, "%d", &onoff );
+
+	set_onoff( onoff != 0 );
+
+	return count;
+}
+
+static inline ssize_t pot_show(char *buf, int *pot) {
+	int value = get_pot( pot );
+	if( value == UNKNOWN )
+		return sprintf( buf, "unknown\n" );
+	else
+		return sprintf( buf, "%d\n", value );
+}
+
+static inline ssize_t pot_store(const char *buf, size_t count, int *pot, int cmd) {
+	int value;
+	sscanf( buf, "%d", &value );
+
+	set_pot( pot, value, cmd );
 
 	return count;
 }
@@ -142,8 +162,107 @@ static struct kobject *itrigue_kobj;
 
 static struct snd_card *card;
 
+static int playback_switch_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo) {
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = 1;
+
+	return 0;
+}
+
+static int playback_switch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+	ucontrol->value.integer.value[0] = get_onoff();
+
+	return 0;
+}
+
+static int playback_switch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+	int changed = ucontrol->value.integer.value[0] != get_onoff();
+
+	set_onoff( ucontrol->value.integer.value[0] );
+
+	return changed;
+}
+
+static int playback_volume_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo) {
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = 255;
+
+	return 0;
+}
+
+static int playback_volume_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+	ucontrol->value.integer.value[0] = get_pot( &volume );
+
+	return 0;
+}
+
+static int playback_volume_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+	int changed = ucontrol->value.integer.value[0] != get_pot( &volume );
+	
+	set_pot( &volume, ucontrol->value.integer.value[0], SET_POT_1 );
+
+	return changed;
+}
+
+static int playback_pitch_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo) {
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = 255;
+
+	return 0;
+}
+
+static int playback_pitch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+	ucontrol->value.integer.value[0] = get_pot( &pitch );
+
+	return 0;
+}
+
+static int playback_pitch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+	int changed = ucontrol->value.integer.value[0] != get_pot( &pitch );
+
+	set_pot( &pitch, ucontrol->value.integer.value[0], SET_POT_0 );
+
+	return changed;
+}
+
+static struct snd_kcontrol_new controls[] = {
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "Master Playback Switch",
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.info = playback_switch_info,
+		.get = playback_switch_get,
+		.put = playback_switch_put
+	},
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "Master Playback Volume",
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.info = playback_volume_info,
+		.get = playback_volume_get,
+		.put = playback_volume_put
+	},
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name = "Tone Control - Bass",
+		.device = 0, .subdevice = 1,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.info = playback_pitch_info,
+		.get = playback_pitch_get,
+		.put = playback_pitch_put
+	},
+};
+
 static int __init itrigue_init(void) {
 	int ret;
+	int i;
+
 	struct spi_master *master;
 
 	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
@@ -178,11 +297,17 @@ static int __init itrigue_init(void) {
 		card->shortname, spi_pot_device_info.bus_num,
 		spi_pot_device_info.chip_select, GPIO_ONOFF );
 
+	for( i = 0; i < ARRAY_SIZE( controls ); i++ ) {
+		ret = snd_ctl_add( card, snd_ctl_new1( &controls[i], NULL ) );
+		cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
+	}
+
 	ret = snd_card_register( card );
 	cleanup_if_nonzero( ret, snd_card_register );
 
 	return 0;
 
+fail_snd_ctl_new1_or_add:
 fail_snd_card_register:
 	snd_card_free( card );
 
