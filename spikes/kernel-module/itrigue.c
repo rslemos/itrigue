@@ -27,22 +27,6 @@
 #include <sound/core.h>
 #include <sound/control.h>
 
-#define cleanup_if_nonzero(value, cleanup_label)					\
-	do {															\
-		if( (value) )												\
-			goto fail_##cleanup_label;								\
-	} while(0)
-
-
-#define cleanup_if_nonzero_with_ret(value, cleanup_label, retval)	\
-	do {															\
-		if( (value) ) {												\
-			ret = (retval);											\
-			goto fail_##cleanup_label;								\
-		}															\
-	} while(0)
-
-
 /* CORE FUNCTIONS */
 #define UNKNOWN -1
 
@@ -51,6 +35,9 @@
 #define SET_POT_1 SET_POT_X(1)
 
 #define GPIO_ONOFF 139
+#define POT_SPI_BUS 4
+#define POT_SPI_CS 0
+
 static struct spi_device *spi_pot_device;
 
 static int volume = UNKNOWN;
@@ -149,18 +136,69 @@ static int playback_pitch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem
 	return changed;
 }
 
+/* SETUP GPIO */
 
-static struct snd_card *card;
+static inline __init int gpio_init(void) {
+	int ret;
 
-static int __init itrigue_init(void) {
+	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
+	if( ret )
+		return ret;
+
+	ret = gpio_direction_output( GPIO_ONOFF, 0 );
+	if( ret )
+		gpio_free( GPIO_ONOFF );
+
+	return ret;
+}
+
+static inline void gpio_exit(void) {
+	gpio_set_value( GPIO_ONOFF, 0 );
+
+	gpio_free( GPIO_ONOFF );
+}
+
+/* SETUP SPI */
+
+static inline __init int spi_init(void) {
 	static struct spi_board_info spi_pot_device_info = {
 		.modalias = "itrigue",
 		.max_speed_hz = 1500000, /* found experimentally */
-		.bus_num = 4,
-		.chip_select = 0,
+		.bus_num = POT_SPI_BUS,
+		.chip_select = POT_SPI_CS,
 		.mode = 0,
 	};
 
+	struct spi_master *master;
+
+	int ret;
+
+	master = spi_busnum_to_master( 4 );
+	if( !master )
+		return -ENODEV;
+
+	spi_pot_device = spi_new_device( master, &spi_pot_device_info );
+	if( !spi_pot_device )
+		return -ENODEV;
+
+	spi_pot_device->bits_per_word = 16;
+
+	ret = spi_setup( spi_pot_device );
+	if( ret )
+		spi_unregister_device( spi_pot_device );
+
+	return ret;
+}
+
+static inline void spi_exit(void) {
+	spi_unregister_device( spi_pot_device );
+}
+
+/* SETUP ALSA */
+
+static struct snd_card *card;
+
+static inline __init int alsa_init(void) {
 	static struct snd_kcontrol_new ctl_onoff = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Switch",
@@ -191,84 +229,78 @@ static int __init itrigue_init(void) {
 
 	int ret;
 
-	struct spi_master *master;
-
-	/* setup GPIO */
-
-	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
-	cleanup_if_nonzero( ret, gpio_onoff_request );
-
-	ret = gpio_direction_output( GPIO_ONOFF, 0 );
-	cleanup_if_nonzero( ret, gpio_onoff_direction_output );
-	
-	/* setup SPI */
-
-	master = spi_busnum_to_master( 4 );
-	cleanup_if_nonzero_with_ret( !master, spi_busnum_to_master, -ENODEV );
-
-	spi_pot_device = spi_new_device( master, &spi_pot_device_info );
-	cleanup_if_nonzero_with_ret( !spi_pot_device, spi_new_device, -ENODEV );
-
-	spi_pot_device->bits_per_word = 16;
-	ret = spi_setup( spi_pot_device );
-	cleanup_if_nonzero( ret, spi_setup );
-
-	/* setup ALSA */
-
 	ret = snd_card_create(-1, "Itrigue", THIS_MODULE, 0, &card);
-	cleanup_if_nonzero( ret, snd_card_create );
+	if( ret )
+		return ret;
 
 	strcpy( card->driver, "I-Trigue" );
 	strcpy( card->shortname, "I-Trigue 3300" );
 	sprintf( card->longname, "%s at spi %d.%d, gpio %d", 
-		card->shortname, spi_pot_device_info.bus_num,
-		spi_pot_device_info.chip_select, GPIO_ONOFF );
+		card->shortname, POT_SPI_BUS, POT_SPI_CS, GPIO_ONOFF );
 
 	/* ALSA controls */
 	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_onoff, NULL ) );
-	cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
+	if( ret )
+		goto bailout;
 
 	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_volume, NULL ) );
-	cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
+	if( ret )
+		goto bailout;
 
 	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_pitch, NULL ) );
-	cleanup_if_nonzero( ret, snd_ctl_new1_or_add );
-
+	if( ret )
+		goto bailout;
 
 	ret = snd_card_register( card );
-	cleanup_if_nonzero( ret, snd_card_register );
+	if( ret )
+		goto bailout;
 
-	return 0;
+	return ret;
 
-fail_snd_ctl_new1_or_add:
-fail_snd_card_register:
+bailout:
 	snd_card_free( card );
 
-fail_snd_card_create:
-fail_spi_setup:
-	spi_unregister_device( spi_pot_device );
+	return ret;
+}
 
-fail_spi_new_device:
-fail_spi_busnum_to_master:
+static inline void alsa_exit(void) {
+	snd_card_free( card );
+}
 
-fail_gpio_onoff_direction_output:
+/* SETUP MODULE */
 
-	gpio_free( GPIO_ONOFF );
+static int __init itrigue_init(void) {
+	int ret;
 
-fail_gpio_onoff_request:
+
+	ret = gpio_init();
+	if( ret )
+		return ret;
+
+	ret = spi_init();
+	if( ret ) {
+		gpio_exit();
+		return ret;
+	}
+
+	ret = alsa_init();
+	if( ret ) {
+		spi_exit();
+		gpio_exit();
+		return ret;
+	}
+
 	return ret;
 }
 
 static void __exit itrigue_exit(void) {
-	snd_card_free( card );
+	alsa_exit();
 
-	spi_unregister_device( spi_pot_device );
-
-	gpio_set_value( GPIO_ONOFF, 0 );
+	spi_exit();
 
 	printk(KERN_INFO "I-Trigue 3300 off.\n");
 
-	gpio_free( GPIO_ONOFF );
+	gpio_exit();
 }
 
 module_init(itrigue_init);
