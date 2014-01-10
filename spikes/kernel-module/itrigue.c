@@ -22,28 +22,39 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/gpio.h>
 #include <linux/spi/spi.h>
 #include <sound/core.h>
 #include <sound/control.h>
 
+/* MODULE PARAMETERS */
+static uint onoff_gpio = 139;
+static uint pot_spi_bus = 4;
+static uint pot_spi_cs = 0;
+
+module_param(onoff_gpio, uint, S_IRUGO);
+MODULE_PARM_DESC(onoff_gpio, "GPIO number of power switch");
+module_param(pot_spi_bus, uint, S_IRUGO);
+MODULE_PARM_DESC(pot_spi_bus, "SPI bus number of potentiometers");
+module_param(pot_spi_cs, uint, S_IRUGO);
+MODULE_PARM_DESC(pot_spi_cs, "SPI bus chip select of potentiometers");
+
 /* CORE FUNCTIONS */
+
 #define UNKNOWN -1
 
-#define GPIO_ONOFF 139
-#define POT_SPI_BUS 4
-#define POT_SPI_CS 0
 
 static struct spi_device *spi_pot_device;
 
 static int pot[] = { UNKNOWN, UNKNOWN };
 
 static inline int get_onoff(void) {
-	return gpio_get_value( GPIO_ONOFF );
+	return gpio_get_value( onoff_gpio );
 }
 
 static inline void set_onoff(int onoff) {
-	gpio_set_value( GPIO_ONOFF, onoff );
+	gpio_set_value( onoff_gpio, onoff );
 }
 
 static inline int get_pot(int idx) {
@@ -114,21 +125,23 @@ static int playback_pot_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_v
 static inline __init int gpio_init(void) {
 	int ret;
 
-	ret = gpio_request( GPIO_ONOFF, "itrigue::on/off" );
+	ret = gpio_request( onoff_gpio, "itrigue::on/off" );
 	if( ret )
 		return ret;
 
-	ret = gpio_direction_output( GPIO_ONOFF, 0 );
+	ret = gpio_direction_output( onoff_gpio, 0 );
 	if( ret )
-		gpio_free( GPIO_ONOFF );
+		gpio_free( onoff_gpio );
+
+	printk( KERN_INFO "I-Trigue 3300 power switch set to GPIO port %u\n", onoff_gpio );
 
 	return ret;
 }
 
 static inline void gpio_exit(void) {
-	gpio_set_value( GPIO_ONOFF, 0 );
+	gpio_set_value( onoff_gpio, 0 );
 
-	gpio_free( GPIO_ONOFF );
+	gpio_free( onoff_gpio );
 }
 
 /* SETUP SPI */
@@ -137,8 +150,8 @@ static inline __init int spi_init(void) {
 	struct spi_board_info spi_pot_device_info = {
 		.modalias = "itrigue",
 		.max_speed_hz = 1500000, /* found experimentally */
-		.bus_num = POT_SPI_BUS,
-		.chip_select = POT_SPI_CS,
+		.bus_num = pot_spi_bus,
+		.chip_select = pot_spi_cs,
 		.mode = 0,
 	};
 
@@ -159,6 +172,9 @@ static inline __init int spi_init(void) {
 	ret = spi_setup( spi_pot_device );
 	if( ret )
 		spi_unregister_device( spi_pot_device );
+
+	printk( KERN_INFO "I-Trigue 3300 potentiometers registered to SPI bus %u, chipselect %u\n", 
+			pot_spi_bus, pot_spi_cs );
 
 	return ret;
 }
@@ -210,7 +226,7 @@ static inline __init int alsa_init(void) {
 	strcpy( card->driver, "I-Trigue" );
 	strcpy( card->shortname, "I-Trigue 3300" );
 	sprintf( card->longname, "%s at spi %d.%d, gpio %d", 
-		card->shortname, POT_SPI_BUS, POT_SPI_CS, GPIO_ONOFF );
+		card->shortname, pot_spi_bus, pot_spi_cs, onoff_gpio );
 
 	/* ALSA controls */
 	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_onoff, NULL ) );
