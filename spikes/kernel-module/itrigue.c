@@ -30,19 +30,14 @@
 /* CORE FUNCTIONS */
 #define UNKNOWN -1
 
-#define SET_POT_X(x) ((0x10 | (0x1 << x)) << 8)
-#define SET_POT_0 SET_POT_X(0)
-#define SET_POT_1 SET_POT_X(1)
-
 #define GPIO_ONOFF 139
 #define POT_SPI_BUS 4
 #define POT_SPI_CS 0
 
 static struct spi_device *spi_pot_device;
 
-static int volume = UNKNOWN;
-static int pitch = UNKNOWN;
-	
+static int pot[] = { UNKNOWN, UNKNOWN };
+
 static inline int get_onoff(void) {
 	return gpio_get_value( GPIO_ONOFF );
 }
@@ -51,18 +46,19 @@ static inline void set_onoff(int onoff) {
 	gpio_set_value( GPIO_ONOFF, onoff );
 }
 
-static inline int get_pot(int *pot) {
-	return *pot;
+static inline int get_pot(int idx) {
+	return pot[idx];
 }
 
-static inline void set_pot(int *pot, int value, int cmd) {
+#define CMD_SET_POT_X(idx, value) (((0x10 | (0x1 << idx)) << 8) | value)
+
+static inline void set_pot(int idx, int value) {
 	static uint16_t write_data;
 
-	*pot = value;
-
-	write_data = cmd | *pot;
-	printk( KERN_INFO "spi_write( ..., 0x%x, %zu )\n", write_data, sizeof write_data );
+	write_data = CMD_SET_POT_X(idx, value);
 	spi_write( spi_pot_device, &write_data, sizeof write_data );
+
+	pot[idx] = value;
 }
 
 /* ALSA FUNCTIONS */
@@ -100,15 +96,15 @@ static int playback_volume_info(struct snd_kcontrol *kcontrol, struct snd_ctl_el
 }
 
 static int playback_volume_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
-	ucontrol->value.integer.value[0] = get_pot( &volume );
+	ucontrol->value.integer.value[0] = get_pot( 1 );
 
 	return 0;
 }
 
 static int playback_volume_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
-	int changed = ucontrol->value.integer.value[0] != get_pot( &volume );
+	int changed = ucontrol->value.integer.value[0] != get_pot( 1 );
 	
-	set_pot( &volume, ucontrol->value.integer.value[0], SET_POT_1 );
+	set_pot( 1, ucontrol->value.integer.value[0] );
 
 	return changed;
 }
@@ -123,15 +119,15 @@ static int playback_pitch_info(struct snd_kcontrol *kcontrol, struct snd_ctl_ele
 }
 
 static int playback_pitch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
-	ucontrol->value.integer.value[0] = get_pot( &pitch );
+	ucontrol->value.integer.value[0] = get_pot( 0 );
 
 	return 0;
 }
 
 static int playback_pitch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
-	int changed = ucontrol->value.integer.value[0] != get_pot( &pitch );
+	int changed = ucontrol->value.integer.value[0] != get_pot( 0 );
 
-	set_pot( &pitch, ucontrol->value.integer.value[0], SET_POT_0 );
+	set_pot( 0, ucontrol->value.integer.value[0] );
 
 	return changed;
 }
