@@ -109,7 +109,7 @@ static int playback_volume_put(struct snd_kcontrol *kcontrol, struct snd_ctl_ele
 	return changed;
 }
 
-static int playback_pitch_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo) {
+static int playback_tone_info(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo) {
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
 	uinfo->count = 1;
 	uinfo->value.integer.min = 0;
@@ -118,13 +118,13 @@ static int playback_pitch_info(struct snd_kcontrol *kcontrol, struct snd_ctl_ele
 	return 0;
 }
 
-static int playback_pitch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+static int playback_tone_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
 	ucontrol->value.integer.value[0] = get_pot( 0 );
 
 	return 0;
 }
 
-static int playback_pitch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
+static int playback_tone_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol) {
 	int changed = ucontrol->value.integer.value[0] != get_pot( 0 );
 
 	set_pot( 0, ucontrol->value.integer.value[0] );
@@ -213,14 +213,14 @@ static inline __init int alsa_init(void) {
 		.put = playback_volume_put
 	};
 
-	static struct snd_kcontrol_new ctl_pitch = {
+	static struct snd_kcontrol_new ctl_tone = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Tone Control - Bass",
 		.device = 0, .subdevice = 1,
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
-		.info = playback_pitch_info,
-		.get = playback_pitch_get,
-		.put = playback_pitch_put
+		.info = playback_tone_info,
+		.get = playback_tone_get,
+		.put = playback_tone_put
 	};
 
 	int ret;
@@ -243,7 +243,7 @@ static inline __init int alsa_init(void) {
 	if( ret )
 		goto bailout;
 
-	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_pitch, NULL ) );
+	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_tone, NULL ) );
 	if( ret )
 		goto bailout;
 
