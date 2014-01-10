@@ -134,7 +134,7 @@ static inline void gpio_exit(void) {
 /* SETUP SPI */
 
 static inline __init int spi_init(void) {
-	static struct spi_board_info spi_pot_device_info = {
+	struct spi_board_info spi_pot_device_info = {
 		.modalias = "itrigue",
 		.max_speed_hz = 1500000, /* found experimentally */
 		.bus_num = POT_SPI_BUS,
@@ -172,7 +172,7 @@ static inline void spi_exit(void) {
 static struct snd_card *card;
 
 static inline __init int alsa_init(void) {
-	static struct snd_kcontrol_new ctl_onoff = {
+	struct snd_kcontrol_new ctl_onoff = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Switch",
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
@@ -181,7 +181,7 @@ static inline __init int alsa_init(void) {
 		.put = playback_switch_put
 	};
 
-	static struct snd_kcontrol_new ctl_volume = {
+	struct snd_kcontrol_new ctl_volume = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Master Playback Volume",
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
@@ -191,10 +191,9 @@ static inline __init int alsa_init(void) {
 		.private_value = 1,
 	};
 
-	static struct snd_kcontrol_new ctl_tone = {
+	struct snd_kcontrol_new ctl_tone = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "Tone Control - Bass",
-		.device = 0, .subdevice = 1,
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 		.info = playback_pot_info,
 		.get = playback_pot_get,
