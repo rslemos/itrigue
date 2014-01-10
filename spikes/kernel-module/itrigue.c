@@ -146,7 +146,7 @@ static inline __init int spi_init(void) {
 
 	int ret;
 
-	master = spi_busnum_to_master( 4 );
+	master = spi_busnum_to_master( spi_pot_device_info.bus_num );
 	if( !master )
 		return -ENODEV;
 
