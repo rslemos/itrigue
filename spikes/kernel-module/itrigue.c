@@ -209,7 +209,7 @@ static inline __init int alsa_init(void) {
 
 	struct snd_kcontrol_new ctl_tone = {
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
-		.name = "Tone Control - Bass",
+		.name = "Bass Playback Volume",
 		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 		.info = playback_pot_info,
 		.get = playback_pot_get,
