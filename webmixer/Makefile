@@ -17,8 +17,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
 # END COPYRIGHT NOTICE
-CFLAGS += `pkg-config --cflags alsa` -g -Wall
-LDFLAGS += `pkg-config --libs alsa` -lm
+CFLAGS += `pkg-config --cflags alsa jansson` -g -Wall
+LDFLAGS += `pkg-config --libs alsa jansson` -lm
 
 .PHONY: all
 
