@@ -34,12 +34,9 @@ error(const char *fmt,...)
 	va_end(va);
 }
 
-static const char card[] = "hw:0";
-
 static struct snd_mixer_selem_regopt
 smixer_options = {
 	.ver = 1,
-	.device = card,
 	.abstract = SND_MIXER_SABSTRACT_NONE,
 };
 
@@ -116,7 +113,7 @@ show_selem_volume(snd_mixer_elem_t *elem,
 }
 
 static int 
-show_selem(snd_mixer_t *handle, snd_mixer_selem_id_t *id, const char *space)
+show_selem(snd_mixer_t *handle, snd_mixer_selem_id_t *id, const char *space, const char *card)
 {
 	snd_mixer_selem_channel_id_t chn;
 	long pmin = 0, pmax = 0;
@@ -379,7 +376,7 @@ show_selem(snd_mixer_t *handle, snd_mixer_selem_id_t *id, const char *space)
 }
 
 int
-main (int argc, char *argv[])
+show_card_mixer (const char *card)
 {
 	int err;
 	snd_mixer_t *handle;
@@ -391,6 +388,9 @@ main (int argc, char *argv[])
 		error("Mixer %s open error: %s", card, snd_strerror(err));
 		return err;
 	}
+
+	smixer_options.device = card;
+
 	if ((err = snd_mixer_selem_register(handle, &smixer_options, NULL)) < 0) {
 		error("Mixer register error: %s", snd_strerror(err));
 		snd_mixer_close(handle);
@@ -407,9 +407,79 @@ main (int argc, char *argv[])
 		if (!snd_mixer_selem_is_active(elem))
 			printf("[INACTIVE] ");
 		printf("Simple mixer control '%s',%i\n", snd_mixer_selem_id_get_name(sid), snd_mixer_selem_id_get_index(sid));
-		show_selem(handle, sid, "  ");
+		show_selem(handle, sid, "  ", card);
 	}
 	snd_mixer_close(handle);
+
+	return 0;
+}
+
+int
+show_card (const char *card)
+{
+	int err;
+
+	snd_ctl_t *handle;
+	snd_ctl_card_info_t *info;
+	snd_ctl_card_info_alloca(&info);
+
+	if ((err = snd_ctl_open(&handle, card, 0)) < 0) {
+		error("control open (%s): %s", card, snd_strerror(err));
+		return err;
+	}
+	if ((err = snd_ctl_card_info(handle, info)) < 0) {
+		error("control hardware info (%s): %s", card, snd_strerror(err));
+		snd_ctl_close(handle);
+		return err;
+	}
+
+	printf("card\n");
+	printf("get_id: %s\n", snd_ctl_card_info_get_id(info));
+	printf("get_driver: %s\n", snd_ctl_card_info_get_driver(info));
+	printf("get_name: %s\n", snd_ctl_card_info_get_name(info));
+	printf("get_longname: %s\n", snd_ctl_card_info_get_longname(info));
+	printf("get_mixername: %s\n", snd_ctl_card_info_get_mixername(info));
+	printf("get_components: %s\n", snd_ctl_card_info_get_components(info));
+
+	printf("card %s: %s [%s]\n",
+		card, snd_ctl_card_info_get_id(info), snd_ctl_card_info_get_name(info));
+
+	snd_ctl_close(handle);
+
+	if ((err = show_card_mixer(card)) < 0) {
+		error("show_card_mixer");
+		return err;
+	}
+
+	return 0;
+}
+
+int
+main (int argc, char *argv[])
+{
+	int err;
+	int card;
+
+	card = -1;
+	if ((err = snd_card_next(&card)) < 0 || card < 0) {
+		error("no soundcards found...");
+		return err;
+	}
+
+	while (card >= 0) {
+		char name[32];
+		sprintf(name, "hw:%d", card);
+
+		if ((err = show_card(name)) < 0) {
+			error("show_card");
+			return err;
+		}
+
+		if ((err = snd_card_next(&card)) < 0) {
+			error("snd_card_next");
+			return err;
+		}
+	}
 
 	return 0;
 }
