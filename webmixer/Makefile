@@ -24,10 +24,10 @@ LDFLAGS += `pkg-config --libs alsa jansson` -lm
 
 all: webmixer decodejson
 
-webmixer: webmixer.o
+webmixer: webmixer.o alsa.o
 
 decodejson: decodejson.o
 
 clean:
-	rm -f webmixer.o webmixer decodejson.o decodejson
+	rm -f *.o webmixer decodejson
 
