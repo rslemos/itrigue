@@ -19,16 +19,11 @@
  * 
  * END COPYRIGHT NOTICE
  ******************************************************************************/
-#include <jansson.h>
 
-extern json_t* get_cards(void);
+extern int run_server (void);
 
 int
 main (int argc, char *argv[])
 {
-	json_t *cards = get_cards();
-	json_dumpf(cards, stdout, JSON_INDENT(2) | JSON_PRESERVE_ORDER | JSON_ESCAPE_SLASH);	
-	json_decref(cards);
-
-	return 0;
+	return run_server();
 }

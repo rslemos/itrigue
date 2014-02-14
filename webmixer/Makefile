@@ -17,14 +17,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
 # END COPYRIGHT NOTICE
-CFLAGS += `pkg-config --cflags alsa jansson` -g -Wall
-LDFLAGS += `pkg-config --libs alsa jansson` -lm
+
+CFLAGS += $(shell pkg-config --cflags alsa jansson libmicrohttpd) -g -Wall
+LDFLAGS += $(shell pkg-config --libs alsa jansson libmicrohttpd) -lm
 
 .PHONY: all
 
 all: webmixer decodejson
 
-webmixer: webmixer.o alsa.o
+webmixer: webmixer.o httpd.o alsa.o
 
 decodejson: decodejson.o
 
