@@ -23,17 +23,7 @@
 #include <asoundlib.h>
 #include <jansson.h>
 
-static void
-error(const char *fmt,...)
-{
-	va_list va;
-
-	va_start(va, fmt);
-	fprintf(stderr, "webmixer: ");
-	vfprintf(stderr, fmt, va);
-	fprintf(stderr, "\n");
-	va_end(va);
-}
+extern void error(const char *fmt,...);
 
 static struct snd_mixer_selem_regopt
 smixer_options = {
@@ -531,7 +521,14 @@ get_card (const char *name)
 
 	snd_ctl_close(handle);
 
-	json_object_set_new(card, "mixer", get_card_mixer(name));
+	{
+		json_t *mixer = get_card_mixer(name);
+
+		if (mixer == NULL)
+			return NULL;
+
+		json_object_set_new(card, "mixer", mixer);
+	}
 
 	return card;
 }
@@ -554,7 +551,15 @@ get_cards(void)
 		char name[32];
 		sprintf(name, "hw:%d", card);
 
-		json_array_append_new(cards, get_card(name));
+		{
+			json_t *card;
+			card = get_card(name);
+
+			if (!card) 
+				return NULL;
+
+			json_array_append_new(cards, card);
+		}
 
 		if ((err = snd_card_next(&card)) < 0) {
 			error("snd_card_next");

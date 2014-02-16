@@ -18,8 +18,8 @@
 # 
 # END COPYRIGHT NOTICE
 
-CFLAGS += $(shell pkg-config --cflags alsa jansson libmicrohttpd) -g -Wall
-LDFLAGS += $(shell pkg-config --libs alsa jansson libmicrohttpd) -lm
+CFLAGS += $(shell pkg-config --cflags alsa jansson libmicrohttpd) -g -Wall -O0
+LDFLAGS += $(shell pkg-config --libs alsa jansson libmicrohttpd) -ldl -lm -rdynamic
 
 .PHONY: all
 
