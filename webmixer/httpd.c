@@ -27,6 +27,10 @@
 #include <execinfo.h>
 #include <sys/queue.h>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #define DEEPEST_BACKTRACE 20
 
 struct error_entry {
@@ -255,6 +259,22 @@ handler (void *cls, struct MHD_Connection *connection,
 	return MHD_NO;
 }
 
+static void*
+log_uri (void *cls, const char *uri, struct MHD_Connection *con)
+{
+	struct sockaddr **addr = (struct sockaddr **)MHD_get_connection_info (con, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+
+	fprintf(stderr, "URI: %s", uri);
+	if ((*addr)->sa_family == AF_INET) {
+		struct sockaddr_in *addr_in = (struct sockaddr_in *) *addr;
+		fprintf(stderr, " [%s]\n", inet_ntoa(addr_in->sin_addr));
+	} else {
+		fprintf(stderr, " [non AF_INET]\n");
+	}
+
+	return NULL;
+}
+
 #define PORT 8888
 
 int
@@ -262,7 +282,7 @@ run_server (void)
 {
 	struct MHD_Daemon *daemon;
 	daemon = MHD_start_daemon (MHD_USE_DEBUG, PORT, NULL, NULL,
-		             &handler, NULL, MHD_OPTION_END);
+		             &handler, NULL, MHD_OPTION_URI_LOG_CALLBACK, log_uri, NULL, MHD_OPTION_END);
 
 	if (NULL == daemon)
 		return 1;
