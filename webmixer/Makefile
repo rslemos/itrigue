@@ -25,7 +25,7 @@ LDFLAGS += $(shell pkg-config --libs alsa jansson libmicrohttpd) -ldl -lm -rdyna
 
 all: webmixer decodejson
 
-webmixer: webmixer.o httpd.o alsa.o
+webmixer: webmixer.o httpd.o alsa.o error.o
 
 decodejson: decodejson.o
 
