@@ -1,2 +1,2 @@
-echo 0 > /sys/class/gpio/gpio139/value
-echo 139 > /sys/class/gpio/unexport
+echo 0 > /sys/class/gpio/gpio143/value
+echo 143 > /sys/class/gpio/unexport
