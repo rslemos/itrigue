@@ -21,13 +21,19 @@
  ******************************************************************************/
 
 #include <string.h>
+#include <errno.h>
 #include <jansson.h>
 #include <microhttpd.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+extern void error(const char *fmt,...);
 
 extern char* error_page(void);
 extern json_t* get_cards(void);
@@ -39,11 +45,20 @@ file_handler (void *cls, struct MHD_Connection *connection,
 	      const char *upload_data,
 	      size_t *upload_data_size, void **con_cls)
 {
-	const char *page = "<html><body>This is a file</body></html>\n";
+	int fd;
+	struct stat file_stat;
+
 	struct MHD_Response *response;
 	int ret;
 
-	response = MHD_create_response_from_buffer (strlen (page), (void*) page, MHD_RESPMEM_MUST_FREE);
+	if ((fd = open(url + 1, O_RDONLY)) < 0) {
+		error("Error opening file %s: %s\n", url + 1, strerror(errno));
+		return MHD_NO;
+	}
+	
+	fstat(fd, &file_stat);
+
+	response = MHD_create_response_from_fd (file_stat.st_size, fd);
 
 	ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
 	MHD_destroy_response (response);
@@ -84,7 +99,7 @@ static const struct mapping {
 }
 mappings[] = {
 	{ "/json", json_handler },
-	{ "/file", file_handler },
+	{ "/", file_handler },
 };
 
 
