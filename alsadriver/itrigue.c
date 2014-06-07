@@ -132,8 +132,8 @@ static inline __init int gpio_init(void) {
 	ret = gpio_direction_output( onoff_gpio, 0 );
 	if( ret )
 		gpio_free( onoff_gpio );
-
-	printk( KERN_INFO "I-Trigue 3300 power switch set to GPIO port %u\n", onoff_gpio );
+	else
+		printk( KERN_INFO "I-Trigue 3300 power switch set to GPIO port %u\n", onoff_gpio );
 
 	return ret;
 }
@@ -172,8 +172,8 @@ static inline __init int spi_init(void) {
 	ret = spi_setup( spi_pot_device );
 	if( ret )
 		spi_unregister_device( spi_pot_device );
-
-	printk( KERN_INFO "I-Trigue 3300 potentiometers registered to SPI bus %u, chipselect %u\n", 
+	else
+		printk( KERN_INFO "I-Trigue 3300 potentiometers registered to SPI bus %u, chipselect %u\n", 
 			pot_spi_bus, pot_spi_cs );
 
 	return ret;
