@@ -32,6 +32,7 @@
 static uint onoff_gpio = 139;
 static uint pot_spi_bus = 4;
 static uint pot_spi_cs = 0;
+static uint speed_hz = 1500000; /* found experimentally */
 
 module_param(onoff_gpio, uint, S_IRUGO);
 MODULE_PARM_DESC(onoff_gpio, "GPIO number of power switch");
@@ -39,6 +40,8 @@ module_param(pot_spi_bus, uint, S_IRUGO);
 MODULE_PARM_DESC(pot_spi_bus, "SPI bus number of potentiometers");
 module_param(pot_spi_cs, uint, S_IRUGO);
 MODULE_PARM_DESC(pot_spi_cs, "SPI bus chip select of potentiometers");
+module_param(speed_hz, uint, S_IRUGO);
+MODULE_PARM_DESC(speed_hz, "SPI bus speed (in Hz)");
 
 /* CORE FUNCTIONS */
 
@@ -149,7 +152,7 @@ static inline void gpio_exit(void) {
 static inline __init int spi_init(void) {
 	struct spi_board_info spi_pot_device_info = {
 		.modalias = "itrigue",
-		.max_speed_hz = 1500000, /* found experimentally */
+		.max_speed_hz = speed_hz,
 		.bus_num = pot_spi_bus,
 		.chip_select = pot_spi_cs,
 		.mode = 0,
@@ -225,8 +228,8 @@ static inline __init int alsa_init(void) {
 
 	strcpy( card->driver, "I-Trigue" );
 	strcpy( card->shortname, "I-Trigue 3300" );
-	sprintf( card->longname, "%s at spi %d.%d, gpio %d", 
-		card->shortname, pot_spi_bus, pot_spi_cs, onoff_gpio );
+	sprintf( card->longname, "%s at spi %d.%d (@ %d Hz), gpio %d", 
+		card->shortname, pot_spi_bus, pot_spi_cs, speed_hz, onoff_gpio );
 
 	/* ALSA controls */
 	ret = snd_ctl_add( card, snd_ctl_new1( &ctl_onoff, NULL ) );
