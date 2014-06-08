@@ -525,7 +525,7 @@ get_card (const char *name)
 	return card;
 }
 
-json_t* 
+static json_t* 
 get_cards(void)
 {
 	int err;
@@ -557,5 +557,18 @@ get_cards(void)
 	}
 
 	return cards;
+}
+
+json_t* 
+get_alsa(void)
+{
+	json_t *root = json_object();
+	json_t *alsa = json_object();
+	json_t *cards = get_cards();
+
+	json_object_set_new(alsa, "cards", cards);
+	json_object_set_new(root, "alsa", alsa);
+
+	return root;
 }
 

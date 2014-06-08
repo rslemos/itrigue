@@ -21,6 +21,7 @@
  ******************************************************************************/
 
 #include <string.h>
+#include <ctype.h>
 #include <errno.h>
 #include <jansson.h>
 #include <microhttpd.h>
@@ -33,7 +34,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-extern json_t* get_cards(void);
+extern json_t* get_alsa(void);
 
 static int
 file_handler (void *cls, struct MHD_Connection *connection,
@@ -63,8 +64,38 @@ file_handler (void *cls, struct MHD_Connection *connection,
 	return ret;
 }
 
+static json_t*
+json_walk (json_t *root, const char *url)
+{
+	while (url[0] == '/' && url[1] != '\0') {
+		url++;
+
+		if (isdigit(url[0])) {
+			int idx;
+			sscanf(url, "%d", &idx);
+
+			while (isdigit(*url)) url++;
+
+			root = json_array_get(root, idx);
+		} else {
+			const char *end = url;
+			char *name;
+
+			while (*end != '\0' && *end != '/') end++;
+
+			name = strndup(url, end - url);
+			root = json_object_get(root, name);
+			free(name);
+
+			url = end;
+		}
+	}
+
+	return root;
+}
+
 static int
-json_handler (void *cls, struct MHD_Connection *connection,
+alsa_handler (void *cls, struct MHD_Connection *connection,
 	      const char *url,
 	      const char *method, const char *version,
 	      const char *upload_data,
@@ -73,10 +104,17 @@ json_handler (void *cls, struct MHD_Connection *connection,
 	char *page;
 	struct MHD_Response *response;
 	int ret;
-	json_t *cards = get_cards();
 
-	page = json_dumps(cards, JSON_INDENT(2) | JSON_PRESERVE_ORDER | JSON_ESCAPE_SLASH);
-	json_decref(cards);
+	json_t *alsa = get_alsa();
+	json_t *selector = json_walk(alsa, url);
+
+	page = json_dumps(selector, 
+		JSON_INDENT(2) | 
+		JSON_PRESERVE_ORDER | 
+		JSON_ESCAPE_SLASH | 
+		JSON_ENCODE_ANY);
+
+	json_decref(alsa);
 
 	response = MHD_create_response_from_buffer (strlen (page), (void*) page, MHD_RESPMEM_MUST_FREE);
 
@@ -91,7 +129,7 @@ static const struct mapping {
 	MHD_AccessHandlerCallback handler;
 }
 mappings[] = {
-	{ "/json", json_handler },
+	{ "/alsa", alsa_handler },
 	{ "/", file_handler },
 };
 
