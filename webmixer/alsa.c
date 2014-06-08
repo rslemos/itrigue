@@ -108,7 +108,7 @@ get_selem(snd_mixer_t *handle, snd_mixer_selem_id_t *id, const char *space, cons
 	snd_mixer_elem_t *elem;
 
 	json_t *selem = json_object();
-	json_t *value = json_array();
+	json_t *value;
 
 	json_object_set_new(selem, "name", json_string(snd_mixer_selem_id_get_name(id)));
 	json_object_set_new(selem, "index", json_integer(snd_mixer_selem_id_get_index(id)));
@@ -118,6 +118,8 @@ get_selem(snd_mixer_t *handle, snd_mixer_selem_id_t *id, const char *space, cons
 		json_object_set_new(selem, "error", error("Mixer %s simple element not found", name));
 		return selem;
 	}
+
+	value = json_array();
 
 	{
 		json_t *capabilities = json_array();
@@ -447,7 +449,7 @@ get_card_mixer (const char *name)
 	snd_mixer_selem_id_t *sid;
 	snd_mixer_elem_t *elem;
 
-	json_t *mixer = json_array();
+	json_t *mixer;
 
 	snd_mixer_selem_id_alloca(&sid);
 	
@@ -467,6 +469,7 @@ get_card_mixer (const char *name)
 		return error("Mixer %s load error: %s", name, snd_strerror(err));
 	}
 
+	mixer = json_array();
 	for (elem = snd_mixer_first_elem(handle); elem; elem = snd_mixer_elem_next(elem)) {
 		json_t *selem;
 
@@ -491,7 +494,9 @@ get_card (const char *name)
 	snd_ctl_t *handle;
 	snd_ctl_card_info_t *info;
 
-	json_t *card = json_object();
+	json_t *card;
+	json_t *mixer;
+
 
 	snd_ctl_card_info_alloca(&info);
 
@@ -505,21 +510,17 @@ get_card (const char *name)
 		return error("control hardware info (%s): %s", name, snd_strerror(err));
 	}
 
+	card = json_object();
 	json_object_set_new(card, "id", json_string(snd_ctl_card_info_get_id(info)));	
 	json_object_set_new(card, "driver", json_string(snd_ctl_card_info_get_driver(info)));
 	json_object_set_new(card, "name", json_string(snd_ctl_card_info_get_name(info)));
 	json_object_set_new(card, "longname", json_string(snd_ctl_card_info_get_longname(info)));
 	json_object_set_new(card, "mixername", json_string(snd_ctl_card_info_get_mixername(info)));
 	json_object_set_new(card, "components", json_string(snd_ctl_card_info_get_components(info)));
-
 	snd_ctl_close(handle);
 
-	{
-		json_t *mixer = get_card_mixer(name);
-
-
-		json_object_set_new(card, "mixer", mixer);
-	}
+	mixer = get_card_mixer(name);
+	json_object_set_new(card, "mixer", mixer);
 
 	return card;
 }
@@ -530,13 +531,14 @@ get_cards(void)
 	int err;
 	int card;
 
-	json_t *cards = json_array();
+	json_t *cards;
 
 	card = -1;
 	if ((err = snd_card_next(&card)) < 0 || card < 0) {
 		return error("no soundcards found...");
 	}
 
+	cards = json_array();
 	while (card >= 0) {
 		char name[32];
 		sprintf(name, "hw:%d", card);
