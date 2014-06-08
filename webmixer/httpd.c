@@ -33,9 +33,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-extern void error(const char *fmt,...);
-
-extern char* error_page(void);
 extern json_t* get_cards(void);
 
 static int
@@ -52,7 +49,7 @@ file_handler (void *cls, struct MHD_Connection *connection,
 	int ret;
 
 	if ((fd = open(url + 1, O_RDONLY)) < 0) {
-		error("Error opening file %s: %s\n", url + 1, strerror(errno));
+		fprintf(stderr, "Error opening file %s: %s\n", url + 1, strerror(errno));
 		return MHD_NO;
 	}
 	
@@ -78,12 +75,8 @@ json_handler (void *cls, struct MHD_Connection *connection,
 	int ret;
 	json_t *cards = get_cards();
 
-	if (cards == NULL) {
-		page = error_page();
-	} else {
-		page = json_dumps(cards, JSON_INDENT(2) | JSON_PRESERVE_ORDER | JSON_ESCAPE_SLASH);
-		json_decref(cards);
-	}
+	page = json_dumps(cards, JSON_INDENT(2) | JSON_PRESERVE_ORDER | JSON_ESCAPE_SLASH);
+	json_decref(cards);
 
 	response = MHD_create_response_from_buffer (strlen (page), (void*) page, MHD_RESPMEM_MUST_FREE);
 

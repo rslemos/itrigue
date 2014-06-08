@@ -23,7 +23,7 @@
 #include <asoundlib.h>
 #include <jansson.h>
 
-extern void error(const char *fmt,...);
+extern json_t* error(const char *fmt,...);
 
 static struct snd_mixer_selem_regopt
 smixer_options = {
@@ -113,13 +113,10 @@ get_selem(snd_mixer_t *handle, snd_mixer_selem_id_t *id, const char *space, cons
 	json_object_set_new(selem, "name", json_string(snd_mixer_selem_id_get_name(id)));
 	json_object_set_new(selem, "index", json_integer(snd_mixer_selem_id_get_index(id)));
 
-
-
-	
 	elem = snd_mixer_find_selem(handle, id);
 	if (!elem) {
-		error("Mixer %s simple element not found", name);
-		return NULL;
+		json_object_set_new(selem, "error", error("Mixer %s simple element not found", name));
+		return selem;
 	}
 
 	{
@@ -455,22 +452,19 @@ get_card_mixer (const char *name)
 	snd_mixer_selem_id_alloca(&sid);
 	
 	if ((err = snd_mixer_open(&handle, 0)) < 0) {
-		error("Mixer %s open error: %s", name, snd_strerror(err));
-		return NULL;
+		return error("Mixer %s open error: %s", name, snd_strerror(err));
 	}
 
 	smixer_options.device = name;
 
 	if ((err = snd_mixer_selem_register(handle, &smixer_options, NULL)) < 0) {
-		error("Mixer register error: %s", snd_strerror(err));
 		snd_mixer_close(handle);
-		return NULL;
+		return error("Mixer register error: %s", snd_strerror(err));
 	}
-	err = snd_mixer_load(handle);
-	if (err < 0) {
-		error("Mixer %s load error: %s", name, snd_strerror(err));
+
+	if ((err = snd_mixer_load(handle)) < 0) {
 		snd_mixer_close(handle);
-		return NULL;
+		return error("Mixer %s load error: %s", name, snd_strerror(err));
 	}
 
 	for (elem = snd_mixer_first_elem(handle); elem; elem = snd_mixer_elem_next(elem)) {
@@ -503,13 +497,12 @@ get_card (const char *name)
 
 
 	if ((err = snd_ctl_open(&handle, name, 0)) < 0) {
-		error("control open (%s): %s", name, snd_strerror(err));
-		return NULL;
+		return error("control open (%s): %s", name, snd_strerror(err));
 	}
+
 	if ((err = snd_ctl_card_info(handle, info)) < 0) {
-		error("control hardware info (%s): %s", name, snd_strerror(err));
 		snd_ctl_close(handle);
-		return NULL;
+		return error("control hardware info (%s): %s", name, snd_strerror(err));
 	}
 
 	json_object_set_new(card, "id", json_string(snd_ctl_card_info_get_id(info)));	
@@ -524,8 +517,6 @@ get_card (const char *name)
 	{
 		json_t *mixer = get_card_mixer(name);
 
-		if (mixer == NULL)
-			return NULL;
 
 		json_object_set_new(card, "mixer", mixer);
 	}
@@ -543,8 +534,7 @@ get_cards(void)
 
 	card = -1;
 	if ((err = snd_card_next(&card)) < 0 || card < 0) {
-		error("no soundcards found...");
-		return NULL;
+		return error("no soundcards found...");
 	}
 
 	while (card >= 0) {
@@ -555,15 +545,12 @@ get_cards(void)
 			json_t *card;
 			card = get_card(name);
 
-			if (!card) 
-				return NULL;
-
 			json_array_append_new(cards, card);
 		}
 
 		if ((err = snd_card_next(&card)) < 0) {
-			error("snd_card_next");
-			return NULL;
+			json_array_append_new(cards, error("snd_card_next"));
+			break;
 		}
 	}
 
