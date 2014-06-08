@@ -541,7 +541,7 @@ get_cards(void)
 	cards = json_array();
 	while (card >= 0) {
 		char name[32];
-		sprintf(name, "hw:%d", card);
+		snprintf(name, sizeof name, "hw:%d", card);
 
 		{
 			json_t *card;
