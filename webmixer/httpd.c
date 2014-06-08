@@ -35,6 +35,7 @@
 #include <arpa/inet.h>
 
 extern json_t* get_alsa(void);
+extern json_t* error (const char *fmt,...);
 
 static int
 file_handler (void *cls, struct MHD_Connection *connection,
@@ -64,34 +65,71 @@ file_handler (void *cls, struct MHD_Connection *connection,
 	return ret;
 }
 
+static void
+assign_and_prune (json_t **lvalue, json_t *rvalue)
+{
+	json_incref(rvalue);
+	json_decref(*lvalue);
+
+	*lvalue = rvalue;
+}
+
 static json_t*
-json_walk (json_t *root, const char *url)
+json_walk (json_t *node, const char *url)
 {
 	while (url[0] == '/' && url[1] != '\0') {
+		const char * const backup = url;
+
 		url++;
 
-		if (isdigit(url[0])) {
-			int idx;
-			sscanf(url, "%d", &idx);
+		if (isdigit(*url)) {
+			int size;
+			int idx = 0;
 
-			while (isdigit(*url)) url++;
+			if (!json_is_array(node)) {
+				assign_and_prune(&node,
+					error("Not an array (at %s)", backup));
+				json_decref(node);
+				return node;
+			}
 
-			root = json_array_get(root, idx);
+			size = json_array_size(node);
+
+			while (isdigit(*url)) idx = idx * 10 + (*url++ - '0');
+
+			if (idx < 0 || idx >= size) {
+				assign_and_prune(&node, 
+					error("Array index out of bounds (at %s): 0-%d", backup, size - 1));
+				json_decref(node);
+				return node;
+			}
+
+			assign_and_prune(&node, json_array_get(node, idx));
 		} else {
 			const char *end = url;
-			char *name;
 
 			while (*end != '\0' && *end != '/') end++;
 
-			name = strndup(url, end - url);
-			root = json_object_get(root, name);
-			free(name);
+			{
+				char *name = strndup(url, end - url);
+				json_t *value = json_object_get(node, name);
+				free(name);
+
+				if (value == NULL) {
+					assign_and_prune(&node,
+						error("Invalid key (at %s)", backup));
+					json_decref(node);
+					return node;
+				}	
+
+				assign_and_prune(&node, value);
+			}
 
 			url = end;
 		}
 	}
 
-	return root;
+	return node;
 }
 
 static int
@@ -105,16 +143,15 @@ alsa_handler (void *cls, struct MHD_Connection *connection,
 	struct MHD_Response *response;
 	int ret;
 
-	json_t *alsa = get_alsa();
-	json_t *selector = json_walk(alsa, url);
+	json_t *node = json_walk(get_alsa(), url);
 
-	page = json_dumps(selector, 
+	page = json_dumps(node, 
 		JSON_INDENT(2) | 
 		JSON_PRESERVE_ORDER | 
 		JSON_ESCAPE_SLASH | 
 		JSON_ENCODE_ANY);
 
-	json_decref(alsa);
+	json_decref(node);
 
 	response = MHD_create_response_from_buffer (strlen (page), (void*) page, MHD_RESPMEM_MUST_FREE);
 
