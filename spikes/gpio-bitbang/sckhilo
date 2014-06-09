@@ -1,0 +1,4 @@
+echo 1 > #2
+nanosleep 0
+echo 0 > #2
+nanosleep 0
